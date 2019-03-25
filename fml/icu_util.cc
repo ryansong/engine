@@ -10,7 +10,6 @@
 #include "flutter/fml/build_config.h"
 #include "flutter/fml/logging.h"
 #include "flutter/fml/mapping.h"
-#include "flutter/fml/native_library.h"
 #include "flutter/fml/paths.h"
 #include "third_party/icu/source/common/unicode/udata.h"
 
@@ -21,10 +20,6 @@ class ICUContext {
  public:
   ICUContext(const std::string& icu_data_path) : valid_(false) {
     valid_ = SetupMapping(icu_data_path) && SetupICU();
-  }
-
-  ICUContext(std::unique_ptr<Mapping> mapping) : mapping_(std::move(mapping)) {
-    valid_ = SetupICU();
   }
 
   ~ICUContext() = default;
@@ -102,18 +97,6 @@ std::once_flag g_icu_init_flag;
 void InitializeICU(const std::string& icu_data_path) {
   std::call_once(g_icu_init_flag,
                  [&icu_data_path]() { InitializeICUOnce(icu_data_path); });
-}
-
-void InitializeICUFromMappingOnce(std::unique_ptr<Mapping> mapping) {
-  static ICUContext* context = new ICUContext(std::move(mapping));
-  FML_CHECK(context->IsValid())
-      << "Unable to initialize the ICU context from a mapping.";
-}
-
-void InitializeICUFromMapping(std::unique_ptr<Mapping> mapping) {
-  std::call_once(g_icu_init_flag, [mapping = std::move(mapping)]() mutable {
-    InitializeICUFromMappingOnce(std::move(mapping));
-  });
 }
 
 }  // namespace icu

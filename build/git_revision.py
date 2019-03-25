@@ -31,6 +31,7 @@ def main():
     '-C',
     repository,
     'rev-parse',
+    '--short',
     'HEAD',
   ])
 

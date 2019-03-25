@@ -4,10 +4,10 @@
 
 part of dart.ui;
 
-/// A wrapper for a raw callback handle.
-///
-/// This is the return type for [PluginUtilities.getCallbackHandle].
+/// An wrapper for a raw callback handle.
 class CallbackHandle {
+  final int _handle;
+
   /// Create an instance using a raw callback handle.
   ///
   /// Only values produced by a call to [CallbackHandle.toRawHandle] should be
@@ -15,31 +15,20 @@ class CallbackHandle {
   CallbackHandle.fromRawHandle(this._handle)
       : assert(_handle != null, "'_handle' must not be null.");
 
-  final int _handle;
-
-  /// Get the raw callback handle to pass over a [MethodChannel] or [SendPort]
-  /// (to pass to another [Isolate]).
+  /// Get the raw callback handle to pass over a [MethodChannel] or isolate
+  /// port.
   int toRawHandle() => _handle;
 
   @override
-  bool operator ==(dynamic other) {
-    if (runtimeType != other.runtimeType)
-      return false;
-    final CallbackHandle typedOther = other;
-    return _handle == typedOther._handle;
-  }
+  int get hashCode => _handle;
 
   @override
-  int get hashCode => _handle.hashCode;
+  bool operator ==(dynamic other) =>
+      (other is CallbackHandle) && (_handle == other._handle);
 }
 
 /// Functionality for Flutter plugin authors.
-///
-/// See also:
-///
-///  * [IsolateNameServer], which provides utilities for dealing with
-///    [Isolate]s.
-class PluginUtilities {
+abstract class PluginUtilities {
   // This class is only a namespace, and should not be instantiated or
   // extended directly.
   factory PluginUtilities._() => null;
@@ -52,7 +41,7 @@ class PluginUtilities {
   /// Get a handle to a named top-level or static callback function which can
   /// be easily passed between isolates.
   ///
-  /// The `callback` argument must not be null.
+  /// `callback` must not be null.
   ///
   /// Returns a [CallbackHandle] that can be provided to
   /// [PluginUtilities.getCallbackFromHandle] to retrieve a tear-off of the
@@ -69,7 +58,7 @@ class PluginUtilities {
   /// Get a tear-off of a named top-level or static callback represented by a
   /// handle.
   ///
-  /// The `handle` argument must not be null.
+  /// `handle` must not be null.
   ///
   /// If `handle` is not a valid handle returned by
   /// [PluginUtilities.getCallbackHandle], null is returned. Otherwise, a

@@ -25,11 +25,9 @@ TextStyle ParagraphStyle::GetTextStyle() const {
   result.font_weight = font_weight;
   result.font_style = font_style;
   result.font_families = std::vector<std::string>({font_family});
-  if (font_size >= 0) {
-    result.font_size = font_size;
-  }
+  result.font_size = font_size;
   result.locale = locale;
-  result.height = height;
+  result.height = line_height;
   return result;
 }
 

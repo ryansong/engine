@@ -3,12 +3,5 @@
 // found in the LICENSE file.
 
 void main() {
-}
-
-void sayHi() {
-  print("Hi");
-}
-
-void throwExceptionNow() {
-  throw("Hello");
+  print('Hello');
 }

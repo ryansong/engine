@@ -7,8 +7,6 @@ package io.flutter.app;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-
-import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.PluginRegistry;
 import io.flutter.plugin.platform.PlatformViewRegistry;
@@ -51,12 +49,6 @@ public class FlutterPluginRegistry
         mPlatformViewsController = new PlatformViewsController();
     }
 
-    public FlutterPluginRegistry(FlutterEngine engine, Context context) {
-        // TODO(mattcarroll): implement use of engine instead of nativeView.
-        mAppContext = context;
-        mPlatformViewsController = new PlatformViewsController();
-    }
-
     @Override
     public boolean hasPlugin(String key) {
         return mPluginMap.containsKey(key);
@@ -92,10 +84,6 @@ public class FlutterPluginRegistry
 
     public void onPreEngineRestart() {
         mPlatformViewsController.onPreEngineRestart();
-    }
-
-    public PlatformViewsController getPlatformViewsController() {
-        return mPlatformViewsController;
     }
 
     private class FlutterRegistrar implements Registrar {

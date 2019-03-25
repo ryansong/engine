@@ -22,7 +22,6 @@
 #include "flutter/runtime/runtime_controller.h"
 #include "flutter/runtime/runtime_delegate.h"
 #include "flutter/shell/common/animator.h"
-#include "flutter/shell/common/io_manager.h"
 #include "flutter/shell/common/rasterizer.h"
 #include "flutter/shell/common/run_configuration.h"
 #include "third_party/skia/include/core/SkPicture.h"
@@ -62,7 +61,8 @@ class Engine final : public blink::RuntimeDelegate {
          blink::Settings settings,
          std::unique_ptr<Animator> animator,
          fml::WeakPtr<blink::SnapshotDelegate> snapshot_delegate,
-         fml::WeakPtr<blink::IOManager> io_manager);
+         fml::WeakPtr<GrContext> resource_context,
+         fml::RefPtr<flow::SkiaUnrefQueue> unref_queue);
 
   ~Engine() override;
 
@@ -104,8 +104,7 @@ class Engine final : public blink::RuntimeDelegate {
 
   void DispatchPlatformMessage(fml::RefPtr<blink::PlatformMessage> message);
 
-  void DispatchPointerDataPacket(const blink::PointerDataPacket& packet,
-                                 uint64_t trace_flow_id);
+  void DispatchPointerDataPacket(const blink::PointerDataPacket& packet);
 
   void DispatchSemanticsAction(int id,
                                blink::SemanticsAction action,

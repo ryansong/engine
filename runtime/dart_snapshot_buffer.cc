@@ -31,23 +31,26 @@ class NativeLibrarySnapshotBuffer final : public DartSnapshotBuffer {
   FML_DISALLOW_COPY_AND_ASSIGN(NativeLibrarySnapshotBuffer);
 };
 
-class MappingBuffer final : public DartSnapshotBuffer {
+class FileSnapshotBuffer final : public DartSnapshotBuffer {
  public:
-  MappingBuffer(std::unique_ptr<fml::Mapping> mapping)
-      : mapping_(std::move(mapping)) {
-    FML_DCHECK(mapping_);
+  FileSnapshotBuffer(
+      const fml::UniqueFD& fd,
+      std::initializer_list<fml::FileMapping::Protection> protection)
+      : mapping_(fd, protection) {
+    if (mapping_.GetSize() > 0) {
+      symbol_ = mapping_.GetMapping();
+    }
   }
 
-  const uint8_t* GetSnapshotPointer() const override {
-    return mapping_->GetMapping();
-  }
+  const uint8_t* GetSnapshotPointer() const override { return symbol_; }
 
-  size_t GetSnapshotSize() const override { return mapping_->GetSize(); }
+  size_t GetSnapshotSize() const override { return mapping_.GetSize(); }
 
  private:
-  std::unique_ptr<fml::Mapping> mapping_;
+  fml::FileMapping mapping_;
+  const uint8_t* symbol_ = nullptr;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(MappingBuffer);
+  FML_DISALLOW_COPY_AND_ASSIGN(FileSnapshotBuffer);
 };
 
 class UnmanagedAllocation final : public DartSnapshotBuffer {
@@ -77,16 +80,8 @@ std::unique_ptr<DartSnapshotBuffer>
 DartSnapshotBuffer::CreateWithContentsOfFile(
     const fml::UniqueFD& fd,
     std::initializer_list<fml::FileMapping::Protection> protection) {
-  return CreateWithMapping(std::make_unique<fml::FileMapping>(fd, protection));
-}
-
-std::unique_ptr<DartSnapshotBuffer> DartSnapshotBuffer::CreateWithMapping(
-    std::unique_ptr<fml::Mapping> mapping) {
-  if (mapping == nullptr || mapping->GetSize() == 0 ||
-      mapping->GetMapping() == nullptr) {
-    return nullptr;
-  }
-  return std::make_unique<MappingBuffer>(std::move(mapping));
+  auto source = std::make_unique<FileSnapshotBuffer>(fd, protection);
+  return source->GetSnapshotPointer() == nullptr ? nullptr : std::move(source);
 }
 
 std::unique_ptr<DartSnapshotBuffer>

@@ -11,7 +11,6 @@
 #include "flutter/common/task_runners.h"
 #include "flutter/flow/layers/layer_tree.h"
 #include "flutter/fml/macros.h"
-#include "flutter/lib/ui/io_manager.h"
 #include "flutter/lib/ui/text/font_collection.h"
 #include "flutter/lib/ui/ui_dart_state.h"
 #include "flutter/lib/ui/window/pointer_data_packet.h"
@@ -34,7 +33,8 @@ class RuntimeController final : public WindowClient {
                     fml::RefPtr<DartSnapshot> shared_snapshot,
                     TaskRunners task_runners,
                     fml::WeakPtr<SnapshotDelegate> snapshot_delegate,
-                    fml::WeakPtr<IOManager> io_manager,
+                    fml::WeakPtr<GrContext> resource_context,
+                    fml::RefPtr<flow::SkiaUnrefQueue> unref_queue,
                     std::string advisory_script_uri,
                     std::string advisory_script_entrypoint,
                     std::function<void(int64_t)> idle_notification_callback);
@@ -48,8 +48,6 @@ class RuntimeController final : public WindowClient {
   bool SetLocales(const std::vector<std::string>& locale_data);
 
   bool SetUserSettingsData(const std::string& data);
-
-  bool SetLifecycleState(const std::string& data);
 
   bool SetSemanticsEnabled(bool enabled);
 
@@ -113,7 +111,6 @@ class RuntimeController final : public WindowClient {
     std::string variant_code;
     std::vector<std::string> locale_data;
     std::string user_settings_data = "{}";
-    std::string lifecycle_state;
     bool semantics_enabled = false;
     bool assistive_technology_enabled = false;
     int32_t accessibility_feature_flags_ = 0;
@@ -125,7 +122,8 @@ class RuntimeController final : public WindowClient {
   fml::RefPtr<DartSnapshot> shared_snapshot_;
   TaskRunners task_runners_;
   fml::WeakPtr<SnapshotDelegate> snapshot_delegate_;
-  fml::WeakPtr<IOManager> io_manager_;
+  fml::WeakPtr<GrContext> resource_context_;
+  fml::RefPtr<flow::SkiaUnrefQueue> unref_queue_;
   std::string advisory_script_uri_;
   std::string advisory_script_entrypoint_;
   std::function<void(int64_t)> idle_notification_callback_;
@@ -139,7 +137,8 @@ class RuntimeController final : public WindowClient {
                     fml::RefPtr<DartSnapshot> shared_snapshot,
                     TaskRunners task_runners,
                     fml::WeakPtr<SnapshotDelegate> snapshot_delegate,
-                    fml::WeakPtr<IOManager> io_manager,
+                    fml::WeakPtr<GrContext> resource_context,
+                    fml::RefPtr<flow::SkiaUnrefQueue> unref_queue,
                     std::string advisory_script_uri,
                     std::string advisory_script_entrypoint,
                     std::function<void(int64_t)> idle_notification_callback,

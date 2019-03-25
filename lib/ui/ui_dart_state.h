@@ -14,7 +14,6 @@
 #include "flutter/flow/skia_gpu_object.h"
 #include "flutter/fml/build_config.h"
 #include "flutter/fml/memory/weak_ptr.h"
-#include "flutter/lib/ui/io_manager.h"
 #include "flutter/lib/ui/isolate_name_server/isolate_name_server.h"
 #include "flutter/lib/ui/snapshot_delegate.h"
 #include "third_party/dart/runtime/include/dart_api.h"
@@ -57,9 +56,6 @@ class UIDartState : public tonic::DartState {
 
   tonic::DartErrorHandleType GetLastError();
 
-  void ReportUnhandledException(const std::string& error,
-                                const std::string& stack_trace);
-
   template <class T>
   static flow::SkiaGPUObject<T> CreateGPUObject(sk_sp<T> object) {
     if (!object) {
@@ -76,11 +72,11 @@ class UIDartState : public tonic::DartState {
               TaskObserverAdd add_callback,
               TaskObserverRemove remove_callback,
               fml::WeakPtr<SnapshotDelegate> snapshot_delegate,
-              fml::WeakPtr<IOManager> io_manager,
+              fml::WeakPtr<GrContext> resource_context,
+              fml::RefPtr<flow::SkiaUnrefQueue> skia_unref_queue,
               std::string advisory_script_uri,
               std::string advisory_script_entrypoint,
               std::string logger_prefix,
-              UnhandledExceptionCallback unhandled_exception_callback,
               IsolateNameServer* isolate_name_server);
 
   ~UIDartState() override;
@@ -98,15 +94,15 @@ class UIDartState : public tonic::DartState {
   const TaskObserverAdd add_callback_;
   const TaskObserverRemove remove_callback_;
   fml::WeakPtr<SnapshotDelegate> snapshot_delegate_;
-  fml::WeakPtr<IOManager> io_manager_;
+  fml::WeakPtr<GrContext> resource_context_;
   const std::string advisory_script_uri_;
   const std::string advisory_script_entrypoint_;
   const std::string logger_prefix_;
   Dart_Port main_port_ = ILLEGAL_PORT;
   std::string debug_name_;
   std::unique_ptr<Window> window_;
+  fml::RefPtr<flow::SkiaUnrefQueue> skia_unref_queue_;
   tonic::DartMicrotaskQueue microtask_queue_;
-  UnhandledExceptionCallback unhandled_exception_callback_;
   IsolateNameServer* isolate_name_server_;
 
   void AddOrRemoveTaskObserver(bool add);

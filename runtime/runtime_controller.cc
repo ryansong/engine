@@ -21,7 +21,8 @@ RuntimeController::RuntimeController(
     fml::RefPtr<DartSnapshot> p_shared_snapshot,
     TaskRunners p_task_runners,
     fml::WeakPtr<SnapshotDelegate> p_snapshot_delegate,
-    fml::WeakPtr<IOManager> p_io_manager,
+    fml::WeakPtr<GrContext> p_resource_context,
+    fml::RefPtr<flow::SkiaUnrefQueue> p_unref_queue,
     std::string p_advisory_script_uri,
     std::string p_advisory_script_entrypoint,
     std::function<void(int64_t)> p_idle_notification_callback)
@@ -31,7 +32,8 @@ RuntimeController::RuntimeController(
                         std::move(p_shared_snapshot),
                         std::move(p_task_runners),
                         std::move(p_snapshot_delegate),
-                        std::move(p_io_manager),
+                        std::move(p_resource_context),
+                        std::move(p_unref_queue),
                         std::move(p_advisory_script_uri),
                         std::move(p_advisory_script_entrypoint),
                         p_idle_notification_callback,
@@ -44,7 +46,8 @@ RuntimeController::RuntimeController(
     fml::RefPtr<DartSnapshot> p_shared_snapshot,
     TaskRunners p_task_runners,
     fml::WeakPtr<SnapshotDelegate> p_snapshot_delegate,
-    fml::WeakPtr<IOManager> p_io_manager,
+    fml::WeakPtr<GrContext> p_resource_context,
+    fml::RefPtr<flow::SkiaUnrefQueue> p_unref_queue,
     std::string p_advisory_script_uri,
     std::string p_advisory_script_entrypoint,
     std::function<void(int64_t)> idle_notification_callback,
@@ -55,7 +58,8 @@ RuntimeController::RuntimeController(
       shared_snapshot_(std::move(p_shared_snapshot)),
       task_runners_(p_task_runners),
       snapshot_delegate_(p_snapshot_delegate),
-      io_manager_(p_io_manager),
+      resource_context_(p_resource_context),
+      unref_queue_(p_unref_queue),
       advisory_script_uri_(p_advisory_script_uri),
       advisory_script_entrypoint_(p_advisory_script_entrypoint),
       idle_notification_callback_(idle_notification_callback),
@@ -67,7 +71,8 @@ RuntimeController::RuntimeController(
                                          task_runners_,
                                          std::make_unique<Window>(this),
                                          snapshot_delegate_,
-                                         io_manager_,
+                                         resource_context_,
+                                         unref_queue_,
                                          p_advisory_script_uri,
                                          p_advisory_script_entrypoint)) {
   std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
@@ -115,7 +120,8 @@ std::unique_ptr<RuntimeController> RuntimeController::Clone() const {
       shared_snapshot_,             //
       task_runners_,                //
       snapshot_delegate_,           //
-      io_manager_,                  //
+      resource_context_,            //
+      unref_queue_,                 //
       advisory_script_uri_,         //
       advisory_script_entrypoint_,  //
       idle_notification_callback_,  //
@@ -128,8 +134,7 @@ bool RuntimeController::FlushRuntimeStateToIsolate() {
          SetLocales(window_data_.locale_data) &&
          SetSemanticsEnabled(window_data_.semantics_enabled) &&
          SetAccessibilityFeatures(window_data_.accessibility_feature_flags_) &&
-         SetUserSettingsData(window_data_.user_settings_data) &&
-         SetLifecycleState(window_data_.lifecycle_state);
+         SetUserSettingsData(window_data_.user_settings_data);
 }
 
 bool RuntimeController::SetViewportMetrics(const ViewportMetrics& metrics) {
@@ -159,17 +164,6 @@ bool RuntimeController::SetUserSettingsData(const std::string& data) {
 
   if (auto* window = GetWindowIfAvailable()) {
     window->UpdateUserSettingsData(window_data_.user_settings_data);
-    return true;
-  }
-
-  return false;
-}
-
-bool RuntimeController::SetLifecycleState(const std::string& data) {
-  window_data_.lifecycle_state = data;
-
-  if (auto* window = GetWindowIfAvailable()) {
-    window->UpdateLifecycleState(window_data_.lifecycle_state);
     return true;
   }
 

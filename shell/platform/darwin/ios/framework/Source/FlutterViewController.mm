@@ -22,8 +22,6 @@
 #include "flutter/shell/platform/darwin/ios/framework/Source/platform_message_response_darwin.h"
 #include "flutter/shell/platform/darwin/ios/platform_view_ios.h"
 
-NSNotificationName const FlutterSemanticsUpdateNotification = @"FlutterSemanticsUpdate";
-
 @implementation FlutterViewController {
   std::unique_ptr<fml::WeakPtrFactory<FlutterViewController>> _weakFactory;
   fml::scoped_nsobject<FlutterEngine> _engine;
@@ -69,9 +67,7 @@ NSNotificationName const FlutterSemanticsUpdateNotification = @"FlutterSemantics
   if (self) {
     _viewOpaque = YES;
     _weakFactory = std::make_unique<fml::WeakPtrFactory<FlutterViewController>>(self);
-    _engine.reset([[FlutterEngine alloc] initWithName:@"io.flutter"
-                                              project:projectOrNil
-                               allowHeadlessExecution:NO]);
+    _engine.reset([[FlutterEngine alloc] initWithName:@"io.flutter" project:projectOrNil]);
     _flutterView.reset([[FlutterView alloc] initWithDelegate:_engine opaque:self.isViewOpaque]);
     [_engine.get() createShell:nil libraryURI:nil];
     _engineNeedsLaunch = YES;
@@ -120,8 +116,8 @@ NSNotificationName const FlutterSemanticsUpdateNotification = @"FlutterSemantics
   [self setupNotificationCenterObservers];
 }
 
-- (FlutterEngine*)engine {
-  return _engine.get();
+- (fml::scoped_nsobject<FlutterEngine>)engine {
+  return _engine;
 }
 
 - (fml::WeakPtr<FlutterViewController>)getWeakPtr {
@@ -427,11 +423,11 @@ NSNotificationName const FlutterSemanticsUpdateNotification = @"FlutterSemantics
   TRACE_EVENT0("flutter", "viewDidDisappear");
   [self surfaceUpdated:NO];
   [[_engine.get() lifecycleChannel] sendMessage:@"AppLifecycleState.paused"];
+
   [super viewDidDisappear:animated];
 }
 
 - (void)dealloc {
-  [_engine.get() notifyViewControllerDeallocated];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [super dealloc];
 }

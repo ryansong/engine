@@ -4,7 +4,6 @@
 
 package io.flutter.plugin.common;
 
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Log;
 import io.flutter.plugin.common.BinaryMessenger.BinaryMessageHandler;
@@ -67,7 +66,7 @@ public final class MethodChannel {
      * @param method the name String of the method.
      * @param arguments the arguments for the invocation, possibly null.
      */
-    public void invokeMethod(@NonNull String method, @Nullable Object arguments) {
+    public void invokeMethod(String method, @Nullable Object arguments) {
         invokeMethod(method, arguments, null);
     }
 

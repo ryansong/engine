@@ -10,7 +10,6 @@
 
 #include "flutter/fml/message_loop.h"
 #include "flutter/fml/platform/darwin/platform_version.h"
-#include "flutter/fml/trace_event.h"
 #include "flutter/shell/common/engine.h"
 #include "flutter/shell/common/platform_view.h"
 #include "flutter/shell/common/shell.h"
@@ -61,24 +60,12 @@
   fml::scoped_nsobject<FlutterBasicMessageChannel> _settingsChannel;
 
   int64_t _nextTextureId;
-
-  uint64_t _nextPointerFlowId;
-
-  BOOL _allowHeadlessExecution;
 }
 
 - (instancetype)initWithName:(NSString*)labelPrefix project:(FlutterDartProject*)projectOrNil {
-  return [self initWithName:labelPrefix project:projectOrNil allowHeadlessExecution:YES];
-}
-
-- (instancetype)initWithName:(NSString*)labelPrefix
-                     project:(FlutterDartProject*)projectOrNil
-      allowHeadlessExecution:(BOOL)allowHeadlessExecution {
   self = [super init];
   NSAssert(self, @"Super init cannot be nil");
   NSAssert(labelPrefix, @"labelPrefix is required");
-
-  _allowHeadlessExecution = allowHeadlessExecution;
   _labelPrefix = [labelPrefix copy];
 
   _weakFactory = std::make_unique<fml::WeakPtrFactory<FlutterEngine>>(self);
@@ -89,6 +76,7 @@
     _dartProject.reset([projectOrNil retain]);
 
   _pluginPublications = [NSMutableDictionary new];
+  _publisher.reset([[FlutterObservatoryPublisher alloc] init]);
   _platformViewsController.reset(new shell::FlutterPlatformViewsController());
 
   [self setupChannels];
@@ -120,15 +108,12 @@
 }
 
 - (void)dispatchPointerDataPacket:(std::unique_ptr<blink::PointerDataPacket>)packet {
-  TRACE_EVENT0("flutter", "dispatchPointerDataPacket");
-  TRACE_FLOW_BEGIN("flutter", "PointerEvent", _nextPointerFlowId);
-  self.shell.GetTaskRunners().GetUITaskRunner()->PostTask(fml::MakeCopyable(
-      [engine = self.shell.GetEngine(), packet = std::move(packet), flow_id = _nextPointerFlowId] {
+  self.shell.GetTaskRunners().GetUITaskRunner()->PostTask(
+      fml::MakeCopyable([engine = self.shell.GetEngine(), packet = std::move(packet)] {
         if (engine) {
-          engine->DispatchPointerDataPacket(*packet, flow_id);
+          engine->DispatchPointerDataPacket(*packet);
         }
       }));
-  _nextPointerFlowId++;
 }
 
 - (fml::WeakPtr<shell::PlatformView>)platformView {
@@ -146,27 +131,11 @@
   return _shell->GetTaskRunners().GetPlatformTaskRunner();
 }
 
-- (void)ensureSemanticsEnabled {
-  self.iosPlatformView->SetSemanticsEnabled(true);
-}
-
 - (void)setViewController:(FlutterViewController*)viewController {
   FML_DCHECK(self.iosPlatformView);
   _viewController = [viewController getWeakPtr];
   self.iosPlatformView->SetOwnerViewController(_viewController);
   [self maybeSetupPlatformViewChannels];
-}
-
-- (void)notifyViewControllerDeallocated {
-  if (!_allowHeadlessExecution) {
-    [self destroyContext];
-  }
-}
-
-- (void)destroyContext {
-  [self resetChannels];
-  _shell.reset();
-  _threadHost.Reset();
 }
 
 - (FlutterViewController*)viewController {
@@ -207,20 +176,6 @@
   return _settingsChannel.get();
 }
 
-- (void)resetChannels {
-  _localizationChannel.reset();
-  _navigationChannel.reset();
-  _platformChannel.reset();
-  _platformViewsChannel.reset();
-  _textInputChannel.reset();
-  _lifecycleChannel.reset();
-  _systemChannel.reset();
-  _settingsChannel.reset();
-}
-
-// If you add a channel, be sure to also update `resetChannels`.
-// Channels get a reference to the engine, and therefore need manual
-// cleanup for proper collection.
 - (void)setupChannels {
   _localizationChannel.reset([[FlutterMethodChannel alloc]
          initWithName:@"flutter/localization"
@@ -266,6 +221,8 @@
   _textInputPlugin.get().textInputDelegate = self;
 
   _platformPlugin.reset([[FlutterPlatformPlugin alloc] initWithEngine:[self getWeakPtr]]);
+
+  [self maybeSetupPlatformViewChannels];
 }
 
 - (void)maybeSetupPlatformViewChannels {
@@ -355,16 +312,16 @@
     // Embedded views requires the gpu and the platform views to be the same.
     // The plan is to eventually dynamically merge the threads when there's a
     // platform view in the layer tree.
-    // For now we use a fixed thread configuration with the same thread used as the
-    // gpu and platform task runner.
+    // For now we run in a single threaded configuration.
+    // TODO(amirh/chinmaygarde): merge only the gpu and platform threads.
+    // https://github.com/flutter/flutter/issues/23974
     // TODO(amirh/chinmaygarde): remove this, and dynamically change the thread configuration.
     // https://github.com/flutter/flutter/issues/23975
-
     blink::TaskRunners task_runners(threadLabel.UTF8String,                          // label
                                     fml::MessageLoop::GetCurrent().GetTaskRunner(),  // platform
                                     fml::MessageLoop::GetCurrent().GetTaskRunner(),  // gpu
-                                    _threadHost.ui_thread->GetTaskRunner(),          // ui
-                                    _threadHost.io_thread->GetTaskRunner()           // io
+                                    fml::MessageLoop::GetCurrent().GetTaskRunner(),  // ui
+                                    fml::MessageLoop::GetCurrent().GetTaskRunner()   // io
     );
     // Create the shell. This is a blocking operation.
     _shell = shell::Shell::Create(std::move(task_runners),  // task runners
@@ -391,11 +348,6 @@
     FML_LOG(ERROR) << "Could not start a shell FlutterEngine with entrypoint: "
                    << entrypoint.UTF8String;
   } else {
-    [self setupChannels];
-    if (!_platformViewsController) {
-      _platformViewsController.reset(new shell::FlutterPlatformViewsController());
-    }
-    _publisher.reset([[FlutterObservatoryPublisher alloc] init]);
     [self maybeSetupPlatformViewChannels];
   }
 
