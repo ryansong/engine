@@ -7,7 +7,9 @@
 namespace flow {
 
 ClipRectLayer::ClipRectLayer(Clip clip_behavior)
-    : clip_behavior_(clip_behavior) {}
+    : clip_behavior_(clip_behavior) {
+  FML_DCHECK(clip_behavior != Clip::none);
+}
 
 ClipRectLayer::~ClipRectLayer() = default;
 
@@ -46,10 +48,10 @@ void ClipRectLayer::Paint(PaintContext& context) const {
   FML_DCHECK(needs_painting());
 
   SkAutoCanvasRestore save(context.internal_nodes_canvas, true);
-  context.internal_nodes_canvas->clipRect(paint_bounds(),
+  context.internal_nodes_canvas->clipRect(clip_rect_,
                                           clip_behavior_ != Clip::hardEdge);
   if (clip_behavior_ == Clip::antiAliasWithSaveLayer) {
-    context.internal_nodes_canvas->saveLayer(paint_bounds(), nullptr);
+    context.internal_nodes_canvas->saveLayer(clip_rect_, nullptr);
   }
   PaintChildren(context);
   if (clip_behavior_ == Clip::antiAliasWithSaveLayer) {
