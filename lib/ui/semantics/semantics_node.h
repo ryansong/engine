@@ -16,8 +16,7 @@
 
 namespace blink {
 
-// Must match the SemanticsAction enum in semantics.dart and in each of the
-// embedders.
+// Must match the SemanticsAction enum in semantics.dart.
 enum class SemanticsAction : int32_t {
   kTap = 1 << 0,
   kLongPress = 1 << 1,
@@ -38,8 +37,6 @@ enum class SemanticsAction : int32_t {
   kDidLoseAccessibilityFocus = 1 << 16,
   kCustomAction = 1 << 17,
   kDismiss = 1 << 18,
-  kMoveCursorForwardByWordIndex = 1 << 19,
-  kMoveCursorBackwardByWordIndex = 1 << 20,
 };
 
 const int kScrollableSemanticsActions =
@@ -68,7 +65,6 @@ enum class SemanticsFlags : int32_t {
   kIsLiveRegion = 1 << 15,
   kHasToggledState = 1 << 16,
   kIsToggled = 1 << 17,
-  kHasImplicitScrolling = 1 << 18,
 };
 
 struct SemanticsNode {
@@ -86,14 +82,11 @@ struct SemanticsNode {
   int32_t actions = 0;
   int32_t textSelectionBase = -1;
   int32_t textSelectionExtent = -1;
-  int32_t platformViewId = -1;
   int32_t scrollChildren = 0;
   int32_t scrollIndex = 0;
   double scrollPosition = std::nan("");
   double scrollExtentMax = std::nan("");
   double scrollExtentMin = std::nan("");
-  double elevation = 0.0;
-  double thickness = 0.0;
   std::string label;
   std::string hint;
   std::string value;

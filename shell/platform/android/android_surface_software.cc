@@ -83,9 +83,8 @@ sk_sp<SkSurface> AndroidSurfaceSoftware::AcquireBackingStore(
     return sk_surface_;
   }
 
-  SkImageInfo image_info =
-      SkImageInfo::Make(size.fWidth, size.fHeight, target_color_type_,
-                        target_alpha_type_, SkColorSpace::MakeSRGB());
+  SkImageInfo image_info = SkImageInfo::Make(
+      size.fWidth, size.fHeight, target_color_type_, target_alpha_type_);
 
   sk_surface_ = SkSurface::MakeRaster(image_info);
 

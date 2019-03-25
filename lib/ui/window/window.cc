@@ -14,13 +14,18 @@
 #include "third_party/tonic/logging/dart_invoke.h"
 #include "third_party/tonic/typed_data/dart_byte_data.h"
 
+using tonic::DartInvokeField;
+using tonic::DartState;
+using tonic::StdStringToDart;
+using tonic::ToDart;
+
 namespace blink {
 namespace {
 
 void DefaultRouteName(Dart_NativeArguments args) {
   std::string routeName =
       UIDartState::Current()->window()->client()->DefaultRouteName();
-  Dart_SetReturnValue(args, tonic::StdStringToDart(routeName));
+  Dart_SetReturnValue(args, StdStringToDart(routeName));
 }
 
 void ScheduleFrame(Dart_NativeArguments args) {
@@ -60,36 +65,16 @@ void SetIsolateDebugName(Dart_NativeArguments args) {
   UIDartState::Current()->SetDebugName(name);
 }
 
-void ReportUnhandledException(Dart_NativeArguments args) {
-  Dart_Handle exception = nullptr;
-
-  auto error_name =
-      tonic::DartConverter<std::string>::FromArguments(args, 0, exception);
-  if (exception) {
-    Dart_ThrowException(exception);
-    return;
-  }
-
-  auto stack_trace =
-      tonic::DartConverter<std::string>::FromArguments(args, 1, exception);
-  if (exception) {
-    Dart_ThrowException(exception);
-    return;
-  }
-
-  UIDartState::Current()->ReportUnhandledException(std::move(error_name),
-                                                   std::move(stack_trace));
-}
-
 Dart_Handle SendPlatformMessage(Dart_Handle window,
                                 const std::string& name,
                                 Dart_Handle callback,
-                                Dart_Handle data_handle) {
+                                const tonic::DartByteData& data) {
   UIDartState* dart_state = UIDartState::Current();
 
   if (!dart_state->window()) {
-    return tonic::ToDart(
-        "Platform messages can only be sent from the main isolate");
+    // Must release the TypedData buffer before allocating other Dart objects.
+    data.Release();
+    return ToDart("Platform messages can only be sent from the main isolate");
   }
 
   fml::RefPtr<PlatformMessageResponse> response;
@@ -98,12 +83,12 @@ Dart_Handle SendPlatformMessage(Dart_Handle window,
         tonic::DartPersistentValue(dart_state, callback),
         dart_state->GetTaskRunners().GetUITaskRunner());
   }
-  if (Dart_IsNull(data_handle)) {
+  if (Dart_IsNull(data.dart_handle())) {
     dart_state->window()->client()->HandlePlatformMessage(
         fml::MakeRefCounted<PlatformMessage>(name, response));
   } else {
-    tonic::DartByteData data(data_handle);
     const uint8_t* buffer = static_cast<const uint8_t*>(data.data());
+
     dart_state->window()->client()->HandlePlatformMessage(
         fml::MakeRefCounted<PlatformMessage>(
             name, std::vector<uint8_t>(buffer, buffer + data.length_in_bytes()),
@@ -162,8 +147,7 @@ Window::Window(WindowClient* client) : client_(client) {}
 Window::~Window() {}
 
 void Window::DidCreateIsolate() {
-  library_.Set(tonic::DartState::Current(),
-               Dart_LookupLibrary(tonic::ToDart("dart:ui")));
+  library_.Set(DartState::Current(), Dart_LookupLibrary(ToDart("dart:ui")));
 }
 
 void Window::UpdateWindowMetrics(const ViewportMetrics& metrics) {
@@ -173,21 +157,20 @@ void Window::UpdateWindowMetrics(const ViewportMetrics& metrics) {
   if (!dart_state)
     return;
   tonic::DartState::Scope scope(dart_state);
-  tonic::LogIfError(tonic::DartInvokeField(
-      library_.value(), "_updateWindowMetrics",
-      {
-          tonic::ToDart(metrics.device_pixel_ratio),
-          tonic::ToDart(metrics.physical_width),
-          tonic::ToDart(metrics.physical_height),
-          tonic::ToDart(metrics.physical_padding_top),
-          tonic::ToDart(metrics.physical_padding_right),
-          tonic::ToDart(metrics.physical_padding_bottom),
-          tonic::ToDart(metrics.physical_padding_left),
-          tonic::ToDart(metrics.physical_view_inset_top),
-          tonic::ToDart(metrics.physical_view_inset_right),
-          tonic::ToDart(metrics.physical_view_inset_bottom),
-          tonic::ToDart(metrics.physical_view_inset_left),
-      }));
+  DartInvokeField(library_.value(), "_updateWindowMetrics",
+                  {
+                      ToDart(metrics.device_pixel_ratio),
+                      ToDart(metrics.physical_width),
+                      ToDart(metrics.physical_height),
+                      ToDart(metrics.physical_padding_top),
+                      ToDart(metrics.physical_padding_right),
+                      ToDart(metrics.physical_padding_bottom),
+                      ToDart(metrics.physical_padding_left),
+                      ToDart(metrics.physical_view_inset_top),
+                      ToDart(metrics.physical_view_inset_right),
+                      ToDart(metrics.physical_view_inset_bottom),
+                      ToDart(metrics.physical_view_inset_left),
+                  });
 }
 
 void Window::UpdateLocales(const std::vector<std::string>& locales) {
@@ -195,11 +178,10 @@ void Window::UpdateLocales(const std::vector<std::string>& locales) {
   if (!dart_state)
     return;
   tonic::DartState::Scope scope(dart_state);
-  tonic::LogIfError(tonic::DartInvokeField(
-      library_.value(), "_updateLocales",
-      {
-          tonic::ToDart<std::vector<std::string>>(locales),
-      }));
+  DartInvokeField(library_.value(), "_updateLocales",
+                  {
+                      tonic::ToDart<std::vector<std::string>>(locales),
+                  });
 }
 
 void Window::UpdateUserSettingsData(const std::string& data) {
@@ -208,23 +190,10 @@ void Window::UpdateUserSettingsData(const std::string& data) {
     return;
   tonic::DartState::Scope scope(dart_state);
 
-  tonic::LogIfError(tonic::DartInvokeField(library_.value(),
-                                           "_updateUserSettingsData",
-                                           {
-                                               tonic::StdStringToDart(data),
-                                           }));
-}
-
-void Window::UpdateLifecycleState(const std::string& data) {
-  std::shared_ptr<tonic::DartState> dart_state = library_.dart_state().lock();
-  if (!dart_state)
-    return;
-  tonic::DartState::Scope scope(dart_state);
-  tonic::LogIfError(tonic::DartInvokeField(library_.value(),
-                                           "_updateLifecycleState",
-                                           {
-                                               tonic::StdStringToDart(data),
-                                           }));
+  DartInvokeField(library_.value(), "_updateUserSettingsData",
+                  {
+                      StdStringToDart(data),
+                  });
 }
 
 void Window::UpdateSemanticsEnabled(bool enabled) {
@@ -233,8 +202,8 @@ void Window::UpdateSemanticsEnabled(bool enabled) {
     return;
   tonic::DartState::Scope scope(dart_state);
 
-  tonic::LogIfError(tonic::DartInvokeField(
-      library_.value(), "_updateSemanticsEnabled", {tonic::ToDart(enabled)}));
+  DartInvokeField(library_.value(), "_updateSemanticsEnabled",
+                  {ToDart(enabled)});
 }
 
 void Window::UpdateAccessibilityFeatures(int32_t values) {
@@ -243,9 +212,8 @@ void Window::UpdateAccessibilityFeatures(int32_t values) {
     return;
   tonic::DartState::Scope scope(dart_state);
 
-  tonic::LogIfError(tonic::DartInvokeField(library_.value(),
-                                           "_updateAccessibilityFeatures",
-                                           {tonic::ToDart(values)}));
+  DartInvokeField(library_.value(), "_updateAccessibilityFeatures",
+                  {ToDart(values)});
 }
 
 void Window::DispatchPlatformMessage(fml::RefPtr<PlatformMessage> message) {
@@ -264,10 +232,9 @@ void Window::DispatchPlatformMessage(fml::RefPtr<PlatformMessage> message) {
     pending_responses_[response_id] = response;
   }
 
-  tonic::LogIfError(
-      tonic::DartInvokeField(library_.value(), "_dispatchPlatformMessage",
-                             {tonic::ToDart(message->channel()), data_handle,
-                              tonic::ToDart(response_id)}));
+  DartInvokeField(
+      library_.value(), "_dispatchPlatformMessage",
+      {ToDart(message->channel()), data_handle, ToDart(response_id)});
 }
 
 void Window::DispatchPointerDataPacket(const PointerDataPacket& packet) {
@@ -279,8 +246,8 @@ void Window::DispatchPointerDataPacket(const PointerDataPacket& packet) {
   Dart_Handle data_handle = ToByteData(packet.data());
   if (Dart_IsError(data_handle))
     return;
-  tonic::LogIfError(tonic::DartInvokeField(
-      library_.value(), "_dispatchPointerDataPacket", {data_handle}));
+  DartInvokeField(library_.value(), "_dispatchPointerDataPacket",
+                  {data_handle});
 }
 
 void Window::DispatchSemanticsAction(int32_t id,
@@ -296,10 +263,9 @@ void Window::DispatchSemanticsAction(int32_t id,
   if (Dart_IsError(args_handle))
     return;
 
-  tonic::LogIfError(tonic::DartInvokeField(
+  DartInvokeField(
       library_.value(), "_dispatchSemanticsAction",
-      {tonic::ToDart(id), tonic::ToDart(static_cast<int32_t>(action)),
-       args_handle}));
+      {ToDart(id), ToDart(static_cast<int32_t>(action)), args_handle});
 }
 
 void Window::BeginFrame(fml::TimePoint frameTime) {
@@ -310,14 +276,14 @@ void Window::BeginFrame(fml::TimePoint frameTime) {
 
   int64_t microseconds = (frameTime - fml::TimePoint()).ToMicroseconds();
 
-  tonic::LogIfError(tonic::DartInvokeField(library_.value(), "_beginFrame",
-                                           {
-                                               Dart_NewInteger(microseconds),
-                                           }));
+  DartInvokeField(library_.value(), "_beginFrame",
+                  {
+                      Dart_NewInteger(microseconds),
+                  });
 
   UIDartState::Current()->FlushMicrotasksNow();
 
-  tonic::LogIfError(tonic::DartInvokeField(library_.value(), "_drawFrame", {}));
+  DartInvokeField(library_.value(), "_drawFrame", {});
 }
 
 void Window::CompletePlatformMessageEmptyResponse(int response_id) {
@@ -352,7 +318,6 @@ void Window::RegisterNatives(tonic::DartLibraryNatives* natives) {
       {"Window_render", Render, 2, true},
       {"Window_updateSemantics", UpdateSemantics, 2, true},
       {"Window_setIsolateDebugName", SetIsolateDebugName, 2, true},
-      {"Window_reportUnhandledException", ReportUnhandledException, 2, true},
   });
 }
 

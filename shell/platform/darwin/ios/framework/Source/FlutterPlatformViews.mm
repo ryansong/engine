@@ -210,7 +210,8 @@ bool FlutterPlatformViewsController::SubmitFrame(bool gl_rendering,
   for (size_t i = 0; i < composition_order_.size(); i++) {
     int64_t view_id = composition_order_[i];
     if (gl_rendering) {
-      EnsureGLOverlayInitialized(view_id, gl_context, gr_context);
+      EnsureGLOverlayInitialized(view_id, gl_context, gr_context,
+                                 gr_context != overlays_gr_context_);
     } else {
       EnsureOverlayInitialized(view_id);
     }
@@ -220,48 +221,33 @@ bool FlutterPlatformViewsController::SubmitFrame(bool gl_rendering,
     canvas->flush();
     did_submit &= frame->Submit();
   }
+  overlays_gr_context_ = gr_context;
   picture_recorders_.clear();
   if (composition_order_ == active_composition_order_) {
     composition_order_.clear();
     return did_submit;
   }
-  DetachUnusedLayers();
-  active_composition_order_.clear();
   UIView* flutter_view = flutter_view_.get();
 
+  // This can be more efficient, instead of removing all views and then re-attaching them,
+  // we should only remove the views that has been completly removed from the layer tree, and
+  // reorder the views using UIView's bringSubviewToFront.
+  // TODO(amirh): make this more efficient.
+  // https://github.com/flutter/flutter/issues/23793
+  for (UIView* sub_view in [flutter_view subviews]) {
+    [sub_view removeFromSuperview];
+  }
+
+  active_composition_order_.clear();
   for (size_t i = 0; i < composition_order_.size(); i++) {
     int view_id = composition_order_[i];
-    UIView* intercepter = touch_interceptors_[view_id].get();
-    UIView* overlay = overlays_[view_id]->overlay_view;
-    FML_CHECK(intercepter.superview == overlay.superview);
-
-    if (intercepter.superview == flutter_view) {
-      [flutter_view bringSubviewToFront:intercepter];
-      [flutter_view bringSubviewToFront:overlay];
-    } else {
-      [flutter_view addSubview:intercepter];
-      [flutter_view addSubview:overlay];
-    }
-
+    [flutter_view addSubview:touch_interceptors_[view_id].get()];
+    [flutter_view addSubview:overlays_[view_id]->overlay_view.get()];
     active_composition_order_.push_back(view_id);
   }
+
   composition_order_.clear();
   return did_submit;
-}
-
-void FlutterPlatformViewsController::DetachUnusedLayers() {
-  std::unordered_set<int64_t> composition_order_set;
-
-  for (int64_t view_id : composition_order_) {
-    composition_order_set.insert(view_id);
-  }
-
-  for (int64_t view_id : active_composition_order_) {
-    if (composition_order_set.find(view_id) == composition_order_set.end()) {
-      [touch_interceptors_[view_id].get() removeFromSuperview];
-      [overlays_[view_id]->overlay_view.get() removeFromSuperview];
-    }
-  }
 }
 
 void FlutterPlatformViewsController::EnsureOverlayInitialized(int64_t overlay_id) {
@@ -281,10 +267,10 @@ void FlutterPlatformViewsController::EnsureOverlayInitialized(int64_t overlay_id
 void FlutterPlatformViewsController::EnsureGLOverlayInitialized(
     int64_t overlay_id,
     std::shared_ptr<IOSGLContext> gl_context,
-    GrContext* gr_context) {
+    GrContext* gr_context,
+    bool update_gr_context) {
   if (overlays_.count(overlay_id) != 0) {
-    if (gr_context != overlays_gr_context_) {
-      overlays_gr_context_ = gr_context;
+    if (update_gr_context) {
       // The overlay already exists, but the GrContext was changed so we need to recreate
       // the rendering surface with the new GrContext.
       IOSSurfaceGL* ios_surface_gl = (IOSSurfaceGL*)overlays_[overlay_id]->ios_surface.get();
@@ -293,9 +279,7 @@ void FlutterPlatformViewsController::EnsureGLOverlayInitialized(
     }
     return;
   }
-  auto contentsScale = flutter_view_.get().layer.contentsScale;
-  FlutterOverlayView* overlay_view =
-      [[FlutterOverlayView alloc] initWithContentsScale:contentsScale];
+  FlutterOverlayView* overlay_view = [[FlutterOverlayView alloc] init];
   overlay_view.frame = flutter_view_.get().bounds;
   overlay_view.autoresizingMask =
       (UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight);
@@ -304,7 +288,6 @@ void FlutterPlatformViewsController::EnsureGLOverlayInitialized(
   std::unique_ptr<Surface> surface = ios_surface->CreateSecondaryGPUSurface(gr_context);
   overlays_[overlay_id] = std::make_unique<FlutterPlatformViewLayer>(
       fml::scoped_nsobject<UIView>(overlay_view), std::move(ios_surface), std::move(surface));
-  overlays_gr_context_ = gr_context;
 }
 
 }  // namespace shell
@@ -370,21 +353,6 @@ void FlutterPlatformViewsController::EnsureGLOverlayInitialized(
   _delayingRecognizer.get().state = UIGestureRecognizerStateEnded;
 }
 
-// We want the intercepting view to consume the touches and not pass the touches up to the parent
-// view. Make the touch event method not call super will not pass the touches up to the parent view.
-// Hence we overide the touch event methods and do nothing.
-- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
-}
-
-- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
-}
-
-- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
-}
-
-- (void)touchesEnded:(NSSet*)touches withEvent:(UIEvent*)event {
-}
-
 @end
 
 @implementation DelayingGestureRecognizer {
@@ -427,8 +395,6 @@ void FlutterPlatformViewsController::EnsureGLOverlayInitialized(
   // So this is safe as when FlutterView is deallocated the reference to ForwardingGestureRecognizer
   // will go away.
   UIView* _flutterView;
-  // Counting the pointers that has started in one touch sequence.
-  NSInteger _currentTouchPointersCount;
 }
 
 - (instancetype)initWithTarget:(id)target flutterView:(UIView*)flutterView {
@@ -436,14 +402,12 @@ void FlutterPlatformViewsController::EnsureGLOverlayInitialized(
   if (self) {
     self.delegate = self;
     _flutterView = flutterView;
-    _currentTouchPointersCount = 0;
   }
   return self;
 }
 
 - (void)touchesBegan:(NSSet*)touches withEvent:(UIEvent*)event {
   [_flutterView touchesBegan:touches withEvent:event];
-  _currentTouchPointersCount += touches.count;
 }
 
 - (void)touchesMoved:(NSSet*)touches withEvent:(UIEvent*)event {
@@ -452,19 +416,11 @@ void FlutterPlatformViewsController::EnsureGLOverlayInitialized(
 
 - (void)touchesEnded:(NSSet*)touches withEvent:(UIEvent*)event {
   [_flutterView touchesEnded:touches withEvent:event];
-  _currentTouchPointersCount -= touches.count;
-  // Touches in one touch sequence are sent to the touchesEnded method separately if different
-  // fingers stop touching the screen at different time. So one touchesEnded method triggering does
-  // not necessarially mean the touch sequence has ended. We Only set the state to
-  // UIGestureRecognizerStateFailed when all the touches in the current touch sequence is ended.
-  if (_currentTouchPointersCount == 0) {
-    self.state = UIGestureRecognizerStateFailed;
-  }
+  self.state = UIGestureRecognizerStateEnded;
 }
 
 - (void)touchesCancelled:(NSSet*)touches withEvent:(UIEvent*)event {
   [_flutterView touchesCancelled:touches withEvent:event];
-  _currentTouchPointersCount = 0;
   self.state = UIGestureRecognizerStateFailed;
 }
 

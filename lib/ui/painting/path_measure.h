@@ -5,12 +5,10 @@
 #ifndef FLUTTER_LIB_UI_PAINTING_PATH_MEASURE_H_
 #define FLUTTER_LIB_UI_PAINTING_PATH_MEASURE_H_
 
-#include <vector>
-
 #include "flutter/lib/ui/dart_wrapper.h"
 #include "flutter/lib/ui/painting/path.h"
-#include "third_party/skia/include/core/SkContourMeasure.h"
 #include "third_party/skia/include/core/SkPath.h"
+#include "third_party/skia/include/core/SkPathMeasure.h"
 #include "third_party/tonic/typed_data/float64_list.h"
 
 namespace tonic {
@@ -32,24 +30,22 @@ class CanvasPathMeasure : public RefCountedDartWrappable<CanvasPathMeasure> {
                                                bool forceClosed);
 
   void setPath(const CanvasPath* path, bool isClosed);
-  float getLength(int contourIndex);
-  tonic::Float32List getPosTan(int contourIndex, float distance);
-  fml::RefPtr<CanvasPath> getSegment(int contourIndex,
-                                     float startD,
+  float getLength();
+  tonic::Float32List getPosTan(float distance);
+  fml::RefPtr<CanvasPath> getSegment(float startD,
                                      float stopD,
                                      bool startWithMoveTo);
-  bool isClosed(int contourIndex);
+  bool isClosed();
   bool nextContour();
 
   static void RegisterNatives(tonic::DartLibraryNatives* natives);
 
-  const SkContourMeasureIter& pathMeasure() const { return *path_measure_; }
+  const SkPathMeasure& pathMeasure() const { return *path_measure_; }
 
  private:
   CanvasPathMeasure();
 
-  std::unique_ptr<SkContourMeasureIter> path_measure_;
-  std::vector<sk_sp<SkContourMeasure>> measures_;
+  std::unique_ptr<SkPathMeasure> path_measure_;
 };
 
 }  // namespace blink
