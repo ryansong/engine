@@ -4,6 +4,8 @@
 
 #include "flutter/shell/common/rasterizer.h"
 
+#include "flutter/shell/common/persistent_cache.h"
+
 #include <utility>
 
 #include "third_party/skia/include/core/SkEncodedImageFormat.h"
@@ -98,10 +100,12 @@ sk_sp<SkImage> Rasterizer::MakeRasterSnapshot(sk_sp<SkPicture> picture,
   TRACE_EVENT0("flutter", __FUNCTION__);
 
   sk_sp<SkSurface> surface;
+  SkImageInfo image_info = SkImageInfo::MakeN32Premul(
+      picture_size.width(), picture_size.height(), SkColorSpace::MakeSRGB());
   if (surface_ == nullptr || surface_->GetContext() == nullptr) {
     // Raster surface is fine if there is no on screen surface. This might
     // happen in case of software rendering.
-    surface = SkSurface::MakeRaster(SkImageInfo::MakeN32Premul(picture_size));
+    surface = SkSurface::MakeRaster(image_info);
   } else {
     if (!surface_->MakeRenderContextCurrent()) {
       return nullptr;
@@ -109,10 +113,9 @@ sk_sp<SkImage> Rasterizer::MakeRasterSnapshot(sk_sp<SkPicture> picture,
 
     // When there is an on screen surface, we need a render target SkSurface
     // because we want to access texture backed images.
-    surface = SkSurface::MakeRenderTarget(
-        surface_->GetContext(),                   // context
-        SkBudgeted::kNo,                          // budgeted
-        SkImageInfo::MakeN32Premul(picture_size)  // image info
+    surface = SkSurface::MakeRenderTarget(surface_->GetContext(),  // context
+                                          SkBudgeted::kNo,         // budgeted
+                                          image_info               // image info
     );
   }
 
@@ -149,8 +152,18 @@ void Rasterizer::DoDraw(std::unique_ptr<flow::LayerTree> layer_tree) {
     return;
   }
 
+  PersistentCache* persistent_cache = PersistentCache::GetCacheForProcess();
+  persistent_cache->ResetStoredNewShaders();
+
   if (DrawToSurface(*layer_tree)) {
     last_layer_tree_ = std::move(layer_tree);
+  }
+
+  if (persistent_cache->IsDumpingSkp() &&
+      persistent_cache->StoredNewShaders()) {
+    auto screenshot =
+        ScreenshotLastLayerTree(ScreenshotType::SkiaPicture, false);
+    persistent_cache->DumpSkp(*screenshot.data);
   }
 }
 
@@ -179,10 +192,6 @@ bool Rasterizer::DrawToSurface(flow::LayerTree& layer_tree) {
   auto compositor_frame = compositor_context_->AcquireFrame(
       surface_->GetContext(), canvas, external_view_embedder,
       surface_->GetRootTransformation(), true);
-
-  if (canvas) {
-    canvas->clear(SK_ColorTRANSPARENT);
-  }
 
   if (compositor_frame && compositor_frame->Raster(layer_tree, false)) {
     frame->Submit();
@@ -231,7 +240,8 @@ static sk_sp<SkData> ScreenshotLayerTreeAsPicture(
 
 static sk_sp<SkSurface> CreateSnapshotSurface(GrContext* surface_context,
                                               const SkISize& size) {
-  const auto image_info = SkImageInfo::MakeN32Premul(size);
+  const auto image_info = SkImageInfo::MakeN32Premul(
+      size.width(), size.height(), SkColorSpace::MakeSRGB());
   if (surface_context) {
     // There is a rendering surface that may contain textures that are going to
     // be referenced in the layer tree about to be drawn.

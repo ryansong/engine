@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "flutter/common/settings.h"
+#include "flutter/common/version/version.h"
 #include "flutter/fml/eintr_wrapper.h"
 #include "flutter/fml/file.h"
 #include "flutter/fml/make_copyable.h"
@@ -42,8 +43,7 @@ Engine::Engine(Delegate& delegate,
                blink::Settings settings,
                std::unique_ptr<Animator> animator,
                fml::WeakPtr<blink::SnapshotDelegate> snapshot_delegate,
-               fml::WeakPtr<GrContext> resource_context,
-               fml::RefPtr<flow::SkiaUnrefQueue> unref_queue)
+               fml::WeakPtr<blink::IOManager> io_manager)
     : delegate_(delegate),
       settings_(std::move(settings)),
       animator_(std::move(animator)),
@@ -60,8 +60,7 @@ Engine::Engine(Delegate& delegate,
       std::move(shared_snapshot),            // shared snapshot
       std::move(task_runners),               // task runners
       std::move(snapshot_delegate),          // snapshot delegate
-      std::move(resource_context),           // resource context
-      std::move(unref_queue),                // skia unref queue
+      std::move(io_manager),                 // io manager
       settings_.advisory_script_uri,         // advisory script uri
       settings_.advisory_script_entrypoint,  // advisory script entrypoint
       settings_.idle_notification_callback   // idle notification callback
@@ -292,6 +291,8 @@ bool Engine::HandleLifecyclePlatformMessage(blink::PlatformMessage* message) {
   if (state == "AppLifecycleState.resumed" && have_surface_) {
     ScheduleFrame();
   }
+  runtime_controller_->SetLifecycleState(state);
+  // Always forward these messages to the framework by returning false.
   return false;
 }
 
@@ -356,7 +357,11 @@ void Engine::HandleSettingsPlatformMessage(blink::PlatformMessage* message) {
   }
 }
 
-void Engine::DispatchPointerDataPacket(const blink::PointerDataPacket& packet) {
+void Engine::DispatchPointerDataPacket(const blink::PointerDataPacket& packet,
+                                       uint64_t trace_flow_id) {
+  TRACE_EVENT0("flutter", "Engine::DispatchPointerDataPacket");
+  TRACE_FLOW_STEP("flutter", "PointerEvent", trace_flow_id);
+  animator_->EnqueueTraceFlowId(trace_flow_id);
   runtime_controller_->DispatchPointerDataPacket(packet);
 }
 

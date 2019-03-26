@@ -39,7 +39,9 @@ class TestPlatformView : public PlatformView,
 
   // |GPUSurfaceSoftwareDelegate|
   virtual sk_sp<SkSurface> AcquireBackingStore(const SkISize& size) override {
-    return SkSurface::MakeRasterN32Premul(size.width(), size.height());
+    SkImageInfo image_info = SkImageInfo::MakeN32Premul(
+        size.width(), size.height(), SkColorSpace::MakeSRGB());
+    return SkSurface::MakeRaster(image_info);
   }
 
   // |GPUSurfaceSoftwareDelegate|
@@ -191,7 +193,7 @@ TEST(ShellTest, InitializeWithMultipleThreadButCallingThreadAsPlatformThread) {
 
 // Reported in Bug: Engine deadlocks when gpu and platforms threads are the same
 // #21398 (https://github.com/flutter/flutter/issues/21398)
-TEST(ShellTest, DISABLED_InitializeWithGPUAndPlatformThreadsTheSame) {
+TEST(ShellTest, InitializeWithGPUAndPlatformThreadsTheSame) {
   blink::Settings settings = {};
   settings.task_observer_add = [](intptr_t, fml::closure) {};
   settings.task_observer_remove = [](intptr_t) {};

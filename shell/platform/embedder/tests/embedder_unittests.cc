@@ -4,39 +4,46 @@
 
 #include <string>
 #include "embedder.h"
+#include "flutter/fml/file.h"
+#include "flutter/fml/mapping.h"
+#include "flutter/fml/synchronization/waitable_event.h"
+#include "flutter/shell/platform/embedder/tests/embedder_config_builder.h"
+#include "flutter/shell/platform/embedder/tests/embedder_test.h"
 #include "flutter/testing/testing.h"
 
-TEST(EmbedderTest, MustNotRunWithInvalidArgs) {
-  FlutterEngine engine = nullptr;
-  FlutterRendererConfig config = {};
-  FlutterProjectArgs args = {};
-  FlutterResult result = FlutterEngineRun(FLUTTER_ENGINE_VERSION + 1, &config,
-                                          &args, NULL, &engine);
-  ASSERT_NE(result, FlutterResult::kSuccess);
+namespace shell {
+namespace testing {
+
+using EmbedderTest = testing::EmbedderTest;
+
+TEST(EmbedderTestNoFixture, MustNotRunWithInvalidArgs) {
+  EmbedderContext context;
+  EmbedderConfigBuilder builder(
+      context, EmbedderConfigBuilder::InitializationPreference::kNoInitialize);
+  auto engine = builder.LaunchEngine();
+  ASSERT_FALSE(engine.is_valid());
 }
 
-TEST(EmbedderTest, CanLaunchAndShutdownWithValidProjectArgs) {
-  FlutterSoftwareRendererConfig renderer;
-  renderer.struct_size = sizeof(FlutterSoftwareRendererConfig);
-  renderer.surface_present_callback = [](void*, const void*, size_t, size_t) {
-    return false;
-  };
-
-  FlutterRendererConfig config = {};
-  config.type = FlutterRendererType::kSoftware;
-  config.software = renderer;
-
-  FlutterProjectArgs args = {};
-  args.struct_size = sizeof(FlutterProjectArgs);
-  args.assets_path = testing::GetFixturesPath();
-  args.main_path = "";
-  args.packages_path = "";
-
-  FlutterEngine engine = nullptr;
-  FlutterResult result = FlutterEngineRun(FLUTTER_ENGINE_VERSION, &config,
-                                          &args, nullptr, &engine);
-  ASSERT_EQ(result, FlutterResult::kSuccess);
-
-  result = FlutterEngineShutdown(engine);
-  ASSERT_EQ(result, FlutterResult::kSuccess);
+TEST_F(EmbedderTest, CanLaunchAndShutdownWithValidProjectArgs) {
+  auto& context = GetEmbedderContext();
+  fml::AutoResetWaitableEvent latch;
+  context.AddIsolateCreateCallback([&latch]() { latch.Signal(); });
+  EmbedderConfigBuilder builder(context);
+  auto engine = builder.LaunchEngine();
+  ASSERT_TRUE(engine.is_valid());
+  // Wait for the root isolate to launch.
+  latch.Wait();
+  engine.reset();
 }
+
+TEST_F(EmbedderTest, CanLaunchAndShutdownMultipleTimes) {
+  EmbedderConfigBuilder builder(GetEmbedderContext());
+  for (size_t i = 0; i < 100; ++i) {
+    auto engine = builder.LaunchEngine();
+    ASSERT_TRUE(engine.is_valid());
+    FML_LOG(INFO) << "Engine launch count: " << i + 1;
+  }
+}
+
+}  // namespace testing
+}  // namespace shell
