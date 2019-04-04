@@ -58,6 +58,13 @@ class FlutterPlatformViewsController {
 
   void PrerollCompositeEmbeddedView(int view_id);
 
+  // Returns the `FlutterPlatformView` object associated with the view_id.
+  //
+  // If the `FlutterPlatformViewsController` does not contain any `FlutterPlatformView` object or
+  // a `FlutterPlatformView` object asscociated with the view_id cannot be found, the method returns
+  // nil.
+  NSObject<FlutterPlatformView>* GetPlatformViewByID(int view_id);
+
   std::vector<SkCanvas*> GetCurrentCanvases();
 
   SkCanvas* CompositeEmbeddedView(int view_id, const flow::EmbeddedViewParams& params);
@@ -84,6 +91,10 @@ class FlutterPlatformViewsController {
   GrContext* overlays_gr_context_;
   SkISize frame_size_;
 
+  // Method channel `OnDispose` calls adds the views to be disposed to this set to be disposed on
+  // the next frame.
+  std::unordered_set<int64_t> views_to_dispose_;
+
   // A vector of embedded view IDs according to their composition order.
   // The last ID in this vector belond to the that is composited on top of all others.
   std::vector<int64_t> composition_order_;
@@ -99,6 +110,8 @@ class FlutterPlatformViewsController {
   void OnRejectGesture(FlutterMethodCall* call, FlutterResult& result);
 
   void DetachUnusedLayers();
+  // Dispose the views in `views_to_dispose_`.
+  void DisposeViews();
   void EnsureOverlayInitialized(int64_t overlay_id);
   void EnsureGLOverlayInitialized(int64_t overlay_id,
                                   std::shared_ptr<IOSGLContext> gl_context,
